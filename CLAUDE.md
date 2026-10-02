@@ -17,3 +17,10 @@ Spring Security + JWT, JUnit 5, Testcontainers. No Lombok.
 - Errors return `ProblemDetail` via a global exception handler.
 - No secrets in code; use environment variables.
 - Every feature needs tests; run `mvn test` before calling anything done.
+
+## Git workflow
+
+- Feature branches off `main`, named for the work (e.g. `feat/accounts-ledger`).
+- Commits follow Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`, `refactor:`, `chore:`) and stay small and focused.
+- Every change merges through a Pull Request with a description covering what changed, why, and how it was tested.
+- CI (`./mvnw verify`) must pass on the PR before merging.
