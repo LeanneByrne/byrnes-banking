@@ -34,3 +34,7 @@ build/
 
 ### Env ###
 .env
+
+### Private notes (teaching mode, roadmap, learning docs) ###
+notes/
+CLAUDE.local.md
