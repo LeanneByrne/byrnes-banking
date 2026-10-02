@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: byrnes-banking
+  datasource:
+    url: jdbc:postgresql://localhost:5432/byrnes_banking
+    username: ${DB_USERNAME:byrnes}
+    password: ${DB_PASSWORD:byrnes}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-me-to-a-long-random-value-before-any-real-deployment}
+    expiration-minutes: 60
