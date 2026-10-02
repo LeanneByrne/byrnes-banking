@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: byrnes_banking
+      POSTGRES_USER: ${DB_USERNAME:-byrnes}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-byrnes}
+    ports:
+      - "5432:5432"
+    volumes:
+      - byrnes-banking-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-byrnes} -d byrnes_banking"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  byrnes-banking-pgdata:
