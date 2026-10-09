@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +14,8 @@ import com.leannebyrne.bank.account.AccountRepository;
 import com.leannebyrne.bank.account.AccountService;
 import com.leannebyrne.bank.account.AccountStatus;
 import com.leannebyrne.bank.account.AccountType;
+import com.leannebyrne.bank.common.OwnershipException;
+import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerService;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
 import java.util.Optional;
@@ -58,11 +59,15 @@ class TransferServiceTest {
         transferService.self = transferService;
     }
 
-    private static Account account(UUID id, AccountType type, AccountStatus status, String currency) {
-        Account account = new Account(UUID.randomUUID(), "ACC-" + id, type, currency);
+    private static Account account(UUID id, UUID customerId, AccountType type, AccountStatus status, String currency) {
+        Account account = new Account(customerId, "ACC-" + id, type, currency);
         ReflectionTestUtils.setField(account, "id", id);
         ReflectionTestUtils.setField(account, "status", status);
         return account;
+    }
+
+    private static Account account(UUID id, AccountType type, AccountStatus status, String currency) {
+        return account(id, UUID.randomUUID(), type, status, currency);
     }
 
     private void stubBothAccountsFound(Account lower, Account higher) {
@@ -72,14 +77,15 @@ class TransferServiceTest {
 
     @Test
     void transferDebitsSourceAndCreditsDestinationForExactAmount() {
-        Account source = account(LOWER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
+        UUID ownerId = UUID.randomUUID();
+        Account source = account(LOWER_ID, ownerId, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         Account destination = account(HIGHER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         stubBothAccountsFound(source, destination);
         when(accountService.getBalanceCents(LOWER_ID)).thenReturn(10_000L);
         when(transferRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 5_000L);
-        Transfer result = transferService.createTransfer(request, "key-1");
+        Transfer result = transferService.createTransfer(request, "key-1", ownerId, Role.CUSTOMER);
 
         assertThat(result.getStatus()).isEqualTo(TransferStatus.COMPLETED);
         verify(ledgerService).recordTransfer(any(), eq(LOWER_ID), eq(HIGHER_ID), eq(5_000L));
@@ -87,7 +93,8 @@ class TransferServiceTest {
 
     @Test
     void insufficientFundsPersistsFailedTransferAndThrows() {
-        Account source = account(LOWER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
+        UUID ownerId = UUID.randomUUID();
+        Account source = account(LOWER_ID, ownerId, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         Account destination = account(HIGHER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         stubBothAccountsFound(source, destination);
         when(accountService.getBalanceCents(LOWER_ID)).thenReturn(1_000L);
@@ -95,7 +102,7 @@ class TransferServiceTest {
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 5_000L);
 
-        assertThatThrownBy(() -> transferService.createTransfer(request, "key-2"))
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-2", ownerId, Role.CUSTOMER))
                 .isInstanceOf(InsufficientFundsException.class);
 
         verify(transferRepository).saveAndFlush(
@@ -105,13 +112,14 @@ class TransferServiceTest {
 
     @Test
     void systemAccountSourceSkipsInsufficientFundsCheck() {
-        Account systemAccount = account(LOWER_ID, AccountType.SYSTEM, AccountStatus.ACTIVE, "USD");
+        UUID ownerId = UUID.randomUUID();
+        Account systemAccount = account(LOWER_ID, ownerId, AccountType.SYSTEM, AccountStatus.ACTIVE, "USD");
         Account destination = account(HIGHER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         stubBothAccountsFound(systemAccount, destination);
         when(transferRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 1_000_000L);
-        Transfer result = transferService.createTransfer(request, "key-3");
+        Transfer result = transferService.createTransfer(request, "key-3", ownerId, Role.CUSTOMER);
 
         assertThat(result.getStatus()).isEqualTo(TransferStatus.COMPLETED);
         verify(accountService, never()).getBalanceCents(any());
@@ -122,7 +130,7 @@ class TransferServiceTest {
     void sameAccountTransferRejectedBeforeAnyLockingAttempt() {
         TransferRequest request = new TransferRequest(LOWER_ID, LOWER_ID, 100L);
 
-        assertThatThrownBy(() -> transferService.createTransfer(request, "key-4"))
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-4", UUID.randomUUID(), Role.ADMIN))
                 .isInstanceOf(InvalidTransferException.class);
 
         verify(accountRepository, never()).findByIdForUpdate(any());
@@ -136,7 +144,8 @@ class TransferServiceTest {
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 100L);
 
-        assertThatThrownBy(() -> transferService.createTransfer(request, "key-5"))
+        // ADMIN bypasses ownership so this test can focus purely on the active-status check.
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-5", UUID.randomUUID(), Role.ADMIN))
                 .isInstanceOf(AccountNotActiveException.class);
     }
 
@@ -148,21 +157,35 @@ class TransferServiceTest {
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 100L);
 
-        assertThatThrownBy(() -> transferService.createTransfer(request, "key-6"))
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-6", UUID.randomUUID(), Role.ADMIN))
                 .isInstanceOf(InvalidTransferException.class);
     }
 
     @Test
+    void nonOwningCustomerCannotInitiateTransferFromAnothersAccount() {
+        Account source = account(LOWER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
+        Account destination = account(HIGHER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
+        stubBothAccountsFound(source, destination);
+
+        TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 100L);
+
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-ownership-1", UUID.randomUUID(), Role.CUSTOMER))
+                .isInstanceOf(OwnershipException.class);
+        verify(ledgerService, never()).recordTransfer(any(), any(), any(), any(Long.class));
+    }
+
+    @Test
     void locksLowerAccountIdFirstRegardlessOfTransferDirection() {
+        UUID ownerId = UUID.randomUUID();
         Account low = account(LOWER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
-        Account high = account(HIGHER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
+        Account high = account(HIGHER_ID, ownerId, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         stubBothAccountsFound(low, high);
         when(accountService.getBalanceCents(any())).thenReturn(10_000L);
         when(transferRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         // Money moving HIGHER -> LOWER should still lock LOWER first.
         TransferRequest request = new TransferRequest(HIGHER_ID, LOWER_ID, 100L);
-        transferService.createTransfer(request, "key-7");
+        transferService.createTransfer(request, "key-7", ownerId, Role.CUSTOMER);
 
         InOrder inOrder = Mockito.inOrder(accountRepository);
         inOrder.verify(accountRepository).findByIdForUpdate(LOWER_ID);
@@ -171,12 +194,15 @@ class TransferServiceTest {
 
     @Test
     void idempotentReplayOfCompletedTransferReturnsOriginalWithoutNewLocks() {
+        UUID ownerId = UUID.randomUUID();
         Transfer existing = new Transfer(LOWER_ID, HIGHER_ID, 500L, "USD", "key-8");
         existing.markCompleted();
         when(transferRepository.findByIdempotencyKey("key-8")).thenReturn(Optional.of(existing));
+        when(accountRepository.findById(LOWER_ID))
+                .thenReturn(Optional.of(account(LOWER_ID, ownerId, AccountType.CHECKING, AccountStatus.ACTIVE, "USD")));
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 500L);
-        Transfer result = transferService.createTransfer(request, "key-8");
+        Transfer result = transferService.createTransfer(request, "key-8", ownerId, Role.CUSTOMER);
 
         assertThat(result).isSameAs(existing);
         verify(accountRepository, never()).findByIdForUpdate(any());
@@ -185,15 +211,32 @@ class TransferServiceTest {
 
     @Test
     void idempotentReplayOfFailedTransferRethrowsSameError() {
+        UUID ownerId = UUID.randomUUID();
         Transfer existing = new Transfer(LOWER_ID, HIGHER_ID, 500L, "USD", "key-9");
         existing.markFailed("Insufficient funds");
         when(transferRepository.findByIdempotencyKey("key-9")).thenReturn(Optional.of(existing));
+        when(accountRepository.findById(LOWER_ID))
+                .thenReturn(Optional.of(account(LOWER_ID, ownerId, AccountType.CHECKING, AccountStatus.ACTIVE, "USD")));
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 500L);
 
-        assertThatThrownBy(() -> transferService.createTransfer(request, "key-9"))
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-9", ownerId, Role.CUSTOMER))
                 .isInstanceOf(InsufficientFundsException.class);
         verify(accountRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void replayByANonOwningCustomerIsRejected() {
+        Transfer existing = new Transfer(LOWER_ID, HIGHER_ID, 500L, "USD", "key-ownership-2");
+        existing.markCompleted();
+        when(transferRepository.findByIdempotencyKey("key-ownership-2")).thenReturn(Optional.of(existing));
+        when(accountRepository.findById(LOWER_ID))
+                .thenReturn(Optional.of(account(LOWER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD")));
+
+        TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 500L);
+
+        assertThatThrownBy(() -> transferService.createTransfer(request, "key-ownership-2", UUID.randomUUID(), Role.CUSTOMER))
+                .isInstanceOf(OwnershipException.class);
     }
 
     @Test
@@ -204,13 +247,14 @@ class TransferServiceTest {
 
         TransferRequest differentAmount = new TransferRequest(LOWER_ID, HIGHER_ID, 999L);
 
-        assertThatThrownBy(() -> transferService.createTransfer(differentAmount, "key-10"))
+        assertThatThrownBy(() -> transferService.createTransfer(differentAmount, "key-10", UUID.randomUUID(), Role.ADMIN))
                 .isInstanceOf(DuplicateIdempotencyKeyException.class);
     }
 
     @Test
     void concurrentFirstTimeRequestsOnSameKeyReturnWinnersResultInsteadOfErroring() {
-        Account source = account(LOWER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
+        UUID ownerId = UUID.randomUUID();
+        Account source = account(LOWER_ID, ownerId, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         Account destination = account(HIGHER_ID, AccountType.CHECKING, AccountStatus.ACTIVE, "USD");
         stubBothAccountsFound(source, destination);
         when(accountService.getBalanceCents(LOWER_ID)).thenReturn(10_000L);
@@ -221,9 +265,10 @@ class TransferServiceTest {
         when(transferRepository.findByIdempotencyKey("key-11"))
                 .thenReturn(Optional.empty(), Optional.of(winner));
         when(transferRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
+        when(accountRepository.findById(LOWER_ID)).thenReturn(Optional.of(source));
 
         TransferRequest request = new TransferRequest(LOWER_ID, HIGHER_ID, 500L);
-        Transfer result = transferService.createTransfer(request, "key-11");
+        Transfer result = transferService.createTransfer(request, "key-11", ownerId, Role.CUSTOMER);
 
         assertThat(result).isSameAs(winner);
     }

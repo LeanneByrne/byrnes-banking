@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
+import com.leannebyrne.bank.common.OwnershipException;
+import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerEntryRepository;
 import java.util.List;
 import java.util.Optional;
@@ -25,13 +27,14 @@ class AccountServiceTest {
     private AccountService accountService;
 
     @Test
-    void getByIdReturnsAccountWhenFound() {
+    void getByIdReturnsAccountWhenOwnerAsks() {
         accountService = new AccountService(accountRepository, ledgerEntryRepository);
-        Account account = new Account(UUID.randomUUID(), "ACC1", AccountType.CHECKING, "USD");
+        UUID customerId = UUID.randomUUID();
+        Account account = new Account(customerId, "ACC1", AccountType.CHECKING, "USD");
         UUID accountId = UUID.randomUUID();
         when(accountRepository.findById(accountId)).thenReturn(Optional.of(account));
 
-        Account result = accountService.getById(accountId);
+        Account result = accountService.getById(accountId, customerId, Role.CUSTOMER);
 
         assertThat(result).isSameAs(account);
     }
@@ -42,8 +45,31 @@ class AccountServiceTest {
         UUID accountId = UUID.randomUUID();
         when(accountRepository.findById(accountId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> accountService.getById(accountId))
+        assertThatThrownBy(() -> accountService.getById(accountId, UUID.randomUUID(), Role.CUSTOMER))
                 .isInstanceOf(AccountNotFoundException.class);
+    }
+
+    @Test
+    void getByIdThrowsOwnershipExceptionWhenNotTheOwner() {
+        accountService = new AccountService(accountRepository, ledgerEntryRepository);
+        Account account = new Account(UUID.randomUUID(), "ACC1", AccountType.CHECKING, "USD");
+        UUID accountId = UUID.randomUUID();
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
+        assertThatThrownBy(() -> accountService.getById(accountId, UUID.randomUUID(), Role.CUSTOMER))
+                .isInstanceOf(OwnershipException.class);
+    }
+
+    @Test
+    void getByIdAllowsAdminRegardlessOfOwnership() {
+        accountService = new AccountService(accountRepository, ledgerEntryRepository);
+        Account account = new Account(UUID.randomUUID(), "ACC1", AccountType.CHECKING, "USD");
+        UUID accountId = UUID.randomUUID();
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
+        Account result = accountService.getById(accountId, UUID.randomUUID(), Role.ADMIN);
+
+        assertThat(result).isSameAs(account);
     }
 
     @Test
@@ -64,8 +90,17 @@ class AccountServiceTest {
         Account account = new Account(customerId, "ACC1", AccountType.SAVINGS, "USD");
         when(accountRepository.findByCustomerId(customerId)).thenReturn(List.of(account));
 
-        List<Account> result = accountService.getByCustomerId(customerId);
+        List<Account> result = accountService.getByCustomerId(customerId, customerId, Role.CUSTOMER);
 
         assertThat(result).containsExactly(account);
+    }
+
+    @Test
+    void getByCustomerIdThrowsOwnershipExceptionForADifferentCustomer() {
+        accountService = new AccountService(accountRepository, ledgerEntryRepository);
+        UUID customerId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> accountService.getByCustomerId(customerId, UUID.randomUUID(), Role.CUSTOMER))
+                .isInstanceOf(OwnershipException.class);
     }
 }

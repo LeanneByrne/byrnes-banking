@@ -1,9 +1,11 @@
 package com.leannebyrne.bank.transfer;
 
+import com.leannebyrne.bank.security.CurrentUser;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
 import com.leannebyrne.bank.transfer.dto.TransferResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -25,7 +27,9 @@ public class TransferController {
     @ResponseStatus(HttpStatus.CREATED)
     public TransferResponse createTransfer(
             @Valid @RequestBody TransferRequest request,
-            @RequestHeader("Idempotency-Key") String idempotencyKey) {
-        return TransferResponse.from(transferService.createTransfer(request, idempotencyKey));
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @AuthenticationPrincipal CurrentUser currentUser) {
+        return TransferResponse.from(transferService.createTransfer(
+                request, idempotencyKey, currentUser.customerId(), currentUser.role()));
     }
 }
