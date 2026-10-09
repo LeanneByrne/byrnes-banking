@@ -7,6 +7,8 @@ import com.leannebyrne.bank.account.AccountRepository;
 import com.leannebyrne.bank.account.AccountService;
 import com.leannebyrne.bank.account.AccountStatus;
 import com.leannebyrne.bank.account.AccountType;
+import com.leannebyrne.bank.common.OwnershipException;
+import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerService;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
 import java.util.UUID;
@@ -46,14 +48,15 @@ public class TransferService {
      * race can be caught here and retried in a fresh transaction, rather than
      * continuing to use a Hibernate session after a failed flush.
      */
-    public Transfer createTransfer(TransferRequest request, String idempotencyKey) {
+    public Transfer createTransfer(TransferRequest request, String idempotencyKey, UUID actingCustomerId,
+            Role actingRole) {
         var existing = transferRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
-            return replayOrConflict(existing.get(), request);
+            return replayOrConflict(existing.get(), request, actingCustomerId, actingRole);
         }
 
         try {
-            return self.transferWithLocks(request, idempotencyKey);
+            return self.transferWithLocks(request, idempotencyKey, actingCustomerId, actingRole);
         } catch (DataIntegrityViolationException raceLoss) {
             // Someone else won the race on this idempotency key between our lookup
             // and our insert. Re-query in a clean transaction and return their
@@ -61,7 +64,7 @@ public class TransferService {
             // client's point of view, actually succeeded.
             Transfer winner = transferRepository.findByIdempotencyKey(idempotencyKey)
                     .orElseThrow(() -> raceLoss);
-            return replayOrConflict(winner, request);
+            return replayOrConflict(winner, request, actingCustomerId, actingRole);
         }
     }
 
@@ -72,7 +75,8 @@ public class TransferService {
      * propagates.
      */
     @Transactional(noRollbackFor = InsufficientFundsException.class)
-    public Transfer transferWithLocks(TransferRequest request, String idempotencyKey) {
+    public Transfer transferWithLocks(TransferRequest request, String idempotencyKey, UUID actingCustomerId,
+            Role actingRole) {
         UUID sourceId = request.sourceAccountId();
         UUID destinationId = request.destinationAccountId();
 
@@ -93,6 +97,11 @@ public class TransferService {
 
         Account source = sourceId.equals(firstId) ? first : second;
         Account destination = sourceId.equals(firstId) ? second : first;
+
+        // A customer may only initiate a transfer FROM an account they own.
+        // Receiving a transfer from someone else is normal, so the destination
+        // has no such restriction.
+        requireOwnership(source.getCustomerId(), actingCustomerId, actingRole);
 
         requireActive(source);
         requireActive(destination);
@@ -136,10 +145,29 @@ public class TransferService {
         }
     }
 
-    private Transfer replayOrConflict(Transfer existing, TransferRequest request) {
+    private void requireOwnership(UUID resourceCustomerId, UUID actingCustomerId, Role actingRole) {
+        if (actingRole != Role.ADMIN && !resourceCustomerId.equals(actingCustomerId)) {
+            throw new OwnershipException("You do not have access to this account");
+        }
+    }
+
+    /**
+     * A replay returns a previously-computed result without re-running any
+     * business logic, but it still needs its own ownership check: without
+     * this, a different customer who happened to submit the exact same
+     * Idempotency-Key and payload as someone else's successful transfer could
+     * fetch back that transfer's details.
+     */
+    private Transfer replayOrConflict(Transfer existing, TransferRequest request, UUID actingCustomerId,
+            Role actingRole) {
         if (!matchesRequest(existing, request)) {
             throw new DuplicateIdempotencyKeyException(existing.getIdempotencyKey());
         }
+
+        Account source = accountRepository.findById(existing.getSourceAccountId())
+                .orElseThrow(() -> new AccountNotFoundException(existing.getSourceAccountId()));
+        requireOwnership(source.getCustomerId(), actingCustomerId, actingRole);
+
         if (existing.getStatus() == TransferStatus.FAILED) {
             // Only failure mode today is insufficient funds, so replaying a
             // known-failed transfer re-throws the same error every time rather
