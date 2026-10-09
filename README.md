@@ -16,8 +16,8 @@ that actually prove the hard invariants hold under contention.
 
 ## Stack
 
-Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Spring Security (JWT) · JUnit 5 ·
-Testcontainers · JaCoCo. No Lombok — DTOs are plain records, entities are explicit.
+Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Spring Security (JWT) · Apache Kafka ·
+JUnit 5 · Testcontainers · JaCoCo. No Lombok — DTOs are plain records, entities are explicit.
 
 ## Why this exists
 
@@ -126,6 +126,7 @@ Short ADRs for the calls that would otherwise get silently re-litigated or rever
 - [0005 — Consistent-order account locking](docs/decisions/0005-consistent-order-account-locking.md)
 - [0006 — Flyway owns the schema](docs/decisions/0006-flyway-owns-schema.md)
 - [0007 — Stateless JWT auth design](docs/decisions/0007-jwt-auth-design.md)
+- [0008 — Transactional outbox with idempotent, at-least-once consumers](docs/decisions/0008-transactional-outbox.md)
 
 ## Known, deliberate limitations
 
