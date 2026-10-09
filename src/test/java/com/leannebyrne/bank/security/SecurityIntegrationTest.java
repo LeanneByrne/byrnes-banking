@@ -74,4 +74,32 @@ class SecurityIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", bearer(ALICE_CUSTOMER_ID, Role.CUSTOMER)))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void customerCannotReadAnotherCustomersProfile() throws Exception {
+        mockMvc.perform(get("/api/customers/" + ALICE_CUSTOMER_ID)
+                        .header("Authorization", bearer(BEN_CUSTOMER_ID, Role.CUSTOMER)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ownerCanReadTheirOwnProfile() throws Exception {
+        mockMvc.perform(get("/api/customers/" + ALICE_CUSTOMER_ID)
+                        .header("Authorization", bearer(ALICE_CUSTOMER_ID, Role.CUSTOMER)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void customerCannotListAnotherCustomersAccounts() throws Exception {
+        mockMvc.perform(get("/api/customers/" + ALICE_CUSTOMER_ID + "/accounts")
+                        .header("Authorization", bearer(BEN_CUSTOMER_ID, Role.CUSTOMER)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ownerCanListTheirOwnAccounts() throws Exception {
+        mockMvc.perform(get("/api/customers/" + ALICE_CUSTOMER_ID + "/accounts")
+                        .header("Authorization", bearer(ALICE_CUSTOMER_ID, Role.CUSTOMER)))
+                .andExpect(status().isOk());
+    }
 }
