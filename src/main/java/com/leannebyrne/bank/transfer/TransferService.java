@@ -10,7 +10,9 @@ import com.leannebyrne.bank.account.AccountType;
 import com.leannebyrne.bank.common.OwnershipException;
 import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerService;
+import com.leannebyrne.bank.outbox.OutboxService;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +26,7 @@ public class TransferService {
     private final AccountRepository accountRepository;
     private final AccountService accountService;
     private final LedgerService ledgerService;
+    private final OutboxService outboxService;
 
     /** Package-private (not final) so tests can point it at the instance under test. */
     TransferService self;
@@ -33,11 +36,13 @@ public class TransferService {
             AccountRepository accountRepository,
             AccountService accountService,
             LedgerService ledgerService,
+            OutboxService outboxService,
             @Lazy TransferService self) {
         this.transferRepository = transferRepository;
         this.accountRepository = accountRepository;
         this.accountService = accountService;
         this.ledgerService = ledgerService;
+        this.outboxService = outboxService;
         this.self = self;
     }
 
@@ -135,6 +140,15 @@ public class TransferService {
 
         ledgerService.recordTransfer(transfer.getId(), source.getId(), destination.getId(), amountCents);
         transfer.markCompleted();
+
+        // Written in this same transaction as the ledger entries above, not
+        // after it commits -- see ADR 0008. If this transaction rolls back,
+        // the event never existed either; there is no window where one
+        // happened without the other.
+        outboxService.recordEvent(TransferCompletedEvent.EVENT_TYPE, new TransferCompletedEvent(
+                transfer.getId(), source.getId(), source.getCustomerId(),
+                destination.getId(), destination.getCustomerId(),
+                amountCents, transfer.getCurrency(), Instant.now()));
 
         return transfer;
     }
