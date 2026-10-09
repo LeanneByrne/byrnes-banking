@@ -17,5 +17,20 @@ jobs:
           java-version: "21"
           cache: maven
 
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          for attempt in 1 2 3; do
+            if echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin; then
+              exit 0
+            fi
+            echo "Docker Hub login attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::warning::Docker Hub login failed after 3 attempts; continuing without authentication"
+
       - name: Run mvn verify
         run: ./mvnw -B verify
