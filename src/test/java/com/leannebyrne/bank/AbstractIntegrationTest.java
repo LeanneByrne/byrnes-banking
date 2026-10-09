@@ -4,10 +4,11 @@ import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.kafka.KafkaContainer;
 
 /**
- * Manual "singleton container" pattern: the container is started once in a
- * static initializer and never stopped by us (Ryuk reaps it at JVM exit).
+ * Manual "singleton container" pattern: containers are started once in a
+ * static initializer and never stopped by us (Ryuk reaps them at JVM exit).
  * Deliberately NOT using {@code @Testcontainers}/{@code @Container} — with
  * Testcontainers 2.0.5, that JUnit5 lifecycle extension does not recognize an
  * already-started static container when a second {@code @SpringBootTest}
@@ -23,7 +24,11 @@ public abstract class AbstractIntegrationTest {
     @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
+    @ServiceConnection
+    static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.0.0");
+
     static {
         POSTGRES.start();
+        KAFKA.start();
     }
 }
