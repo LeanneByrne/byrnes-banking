@@ -1,0 +1,12 @@
+# Activated in the ECS task definition (SPRING_PROFILES_ACTIVE=cloud).
+# See ADR 0011: there is no managed Kafka broker in the AWS deployment, so
+# the relay and consumers that need one are disabled via @Profile("!cloud")
+# on their own classes. This only silences the Kafka health indicator so a
+# human checking /actuator/health doesn't see a misleading DOWN for a broker
+# that was never supposed to exist here -- the ECS task's own health check
+# already targets /actuator/health/readiness, which never included
+# third-party component health in the first place.
+management:
+  health:
+    kafka:
+      enabled: false

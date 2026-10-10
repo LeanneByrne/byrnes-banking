@@ -1,0 +1,9 @@
+target/
+frontend/
+notes/
+docs/
+*.md
+.git/
+.github/
+terraform/
+src/test/
