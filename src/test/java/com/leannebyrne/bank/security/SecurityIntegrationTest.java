@@ -102,4 +102,39 @@ class SecurityIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", bearer(ALICE_CUSTOMER_ID, Role.CUSTOMER)))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void actuatorHealthIsPublicWithNoToken() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void actuatorPrometheusIsPublicWithNoToken() throws Exception {
+        // Prometheus's scraper can't carry a bearer token, so this endpoint is
+        // deliberately exempt -- see SecurityConfig's comment on why that's an
+        // acceptable tradeoff for a machine-to-machine, internal-network-only caller.
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void customerRoleCannotReadActuatorMetrics() throws Exception {
+        mockMvc.perform(get("/actuator/metrics")
+                        .header("Authorization", bearer(ALICE_CUSTOMER_ID, Role.CUSTOMER)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void actuatorMetricsWithNoTokenIsRejected() throws Exception {
+        mockMvc.perform(get("/actuator/metrics"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminRoleCanReadActuatorMetrics() throws Exception {
+        mockMvc.perform(get("/actuator/metrics")
+                        .header("Authorization", bearer(UUID.randomUUID(), Role.ADMIN)))
+                .andExpect(status().isOk());
+    }
 }

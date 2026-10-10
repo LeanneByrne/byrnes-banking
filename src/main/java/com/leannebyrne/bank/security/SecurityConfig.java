@@ -43,6 +43,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        // /health and /prometheus stay unauthenticated: both are
+                        // machine-to-machine (a load balancer probe, Prometheus's
+                        // scraper) rather than a human browsing operational
+                        // detail, and trusted here because they're only reachable
+                        // over the docker-compose network, not the public
+                        // internet. Everything else under /actuator (metrics,
+                        // info, etc.) is a human-readable surface and stays
+                        // ADMIN-gated.
+                        .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(eh -> eh
