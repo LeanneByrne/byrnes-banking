@@ -94,6 +94,42 @@ request ever reaches a controller — are handled separately, by a custom
 difference between "the filter rejected you" and "the service rejected you" just from the
 response format.
 
+## Downstream events: outbox, Kafka, and idempotent consumers
+
+A completed transfer has consumers beyond the request that triggered it — an audit trail and a
+(simulated) notification service today, with room for more later without touching
+`TransferService` again. The path from "transfer completed" to "a consumer reacted to it":
+
+```mermaid
+sequenceDiagram
+    participant Service as TransferService
+    participant DB as Postgres
+    participant Relay as OutboxRelay
+    participant Kafka
+    participant Audit as AuditLogConsumer
+    participant Notify as NotificationConsumer
+
+    Service->>DB: INSERT transfer + ledger rows + outbox_events row<br/>(ONE transaction)
+    Note over Relay: polls every 2s
+    Relay->>DB: SELECT unpublished outbox_events
+    Relay->>Kafka: send(topic, key=eventId,<br/>headers={eventId, eventType}, value=payload)
+    Kafka-->>Relay: ack
+    Relay->>DB: UPDATE published_at
+    Kafka->>Audit: deliver (consumer group "audit-log")
+    Audit->>DB: INSERT audit_log (UNIQUE on event_id)
+    Kafka->>Notify: deliver (consumer group "notification")
+    Notify->>DB: INSERT notification_log x2 (UNIQUE on event_id+customer_id)
+```
+
+The outbox row commits atomically with the transfer itself (see
+[ADR 0008](decisions/0008-transactional-outbox.md)), which is what makes "the event was lost" or
+"the event fired for a transfer that got rolled back" structurally impossible. What this
+*doesn't* give you for free is exactly-once delivery to Kafka — the relay can send successfully
+and then crash before recording that it did, which means the same event can reach a consumer
+twice. Both consumers handle this the same way `TransferService` already handles a repeated
+idempotency key: a database `UNIQUE` constraint turns a duplicate delivery into a harmless insert
+conflict instead of a duplicate row.
+
 ## What's deliberately not derived from anything stored
 
 There is no `balance` column anywhere in this schema. `AccountService.getBalanceCents` sums

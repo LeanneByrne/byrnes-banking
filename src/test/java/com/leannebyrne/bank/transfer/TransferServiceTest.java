@@ -17,6 +17,7 @@ import com.leannebyrne.bank.account.AccountType;
 import com.leannebyrne.bank.common.OwnershipException;
 import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerService;
+import com.leannebyrne.bank.outbox.OutboxService;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,11 +50,15 @@ class TransferServiceTest {
     @Mock
     private LedgerService ledgerService;
 
+    @Mock
+    private OutboxService outboxService;
+
     private TransferService transferService;
 
     @BeforeEach
     void setUp() {
-        transferService = new TransferService(transferRepository, accountRepository, accountService, ledgerService, null);
+        transferService = new TransferService(
+                transferRepository, accountRepository, accountService, ledgerService, outboxService, null);
         // Production wiring does this via a @Lazy Spring proxy; tests have no
         // Spring context, so point self at the instance under test directly.
         transferService.self = transferService;
@@ -89,6 +94,13 @@ class TransferServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(TransferStatus.COMPLETED);
         verify(ledgerService).recordTransfer(any(), eq(LOWER_ID), eq(HIGHER_ID), eq(5_000L));
+        verify(outboxService).recordEvent(eq(TransferCompletedEvent.EVENT_TYPE), Mockito.argThat(payload -> {
+            var event = (TransferCompletedEvent) payload;
+            return event.sourceAccountId().equals(LOWER_ID)
+                    && event.destinationAccountId().equals(HIGHER_ID)
+                    && event.amountCents() == 5_000L
+                    && event.sourceCustomerId().equals(ownerId);
+        }));
     }
 
     @Test
@@ -108,6 +120,7 @@ class TransferServiceTest {
         verify(transferRepository).saveAndFlush(
                 Mockito.argThat(t -> t.getStatus() == TransferStatus.FAILED));
         verify(ledgerService, never()).recordTransfer(any(), any(), any(), any(Long.class));
+        verify(outboxService, never()).recordEvent(any(), any());
     }
 
     @Test
