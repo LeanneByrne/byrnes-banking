@@ -17,8 +17,9 @@ that actually prove the hard invariants hold under contention.
 ## Stack
 
 Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Spring Security (JWT) · Apache Kafka ·
-Micrometer · Prometheus · Grafana · JUnit 5 · Testcontainers · JaCoCo · React · TypeScript · Vite.
-No Lombok — DTOs are plain records, entities are explicit.
+Micrometer · Prometheus · Grafana · JUnit 5 · Testcontainers · JaCoCo · React · TypeScript · Vite ·
+Terraform · AWS (ECS Fargate, RDS, S3 + CloudFront). No Lombok — DTOs are plain records, entities
+are explicit.
 
 ## Why this exists
 
@@ -134,6 +135,13 @@ something a non-technical reviewer can watch happen in real time.
 The JWT is held in React state only, never `localStorage`/`sessionStorage` — see
 [ADR 0010](docs/decisions/0010-frontend-token-storage.md).
 
+## Deploying to AWS
+
+Terraform for a minimal ECS Fargate + RDS + S3/CloudFront deployment lives in
+[`terraform/`](terraform/) — see its README for the full runbook, including the billing-alert-
+first step. This creates real, billable AWS resources; nothing deploys automatically, and
+`terraform destroy` is the one-command teardown.
+
 ## Architecture
 
 See [`docs/architecture.md`](docs/architecture.md) for a diagram and walkthrough of the request
@@ -170,6 +178,9 @@ Short ADRs for the calls that would otherwise get silently re-litigated or rever
 - [0008 — Transactional outbox with idempotent, at-least-once consumers](docs/decisions/0008-transactional-outbox.md)
 - [0009 — Actuator exposure boundary](docs/decisions/0009-actuator-exposure.md)
 - [0010 — Frontend JWT storage: in-memory only](docs/decisions/0010-frontend-token-storage.md)
+- [0011 — Kafka excluded from the AWS deployment](docs/decisions/0011-kafka-excluded-from-cloud.md)
+- [0012 — Cost-conscious cloud infrastructure choices](docs/decisions/0012-cost-conscious-cloud-infra.md)
+- [0013 — OIDC over stored AWS keys](docs/decisions/0013-oidc-over-stored-aws-keys.md)
 
 ## Known, deliberate limitations
 
