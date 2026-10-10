@@ -130,6 +130,30 @@ twice. Both consumers handle this the same way `TransferService` already handles
 idempotency key: a database `UNIQUE` constraint turns a duplicate delivery into a harmless insert
 conflict instead of a duplicate row.
 
+## Observability: health, metrics, and tracing
+
+Three separate mechanisms answer three separate questions:
+
+- **Health** (`/actuator/health`) — is this instance able to serve traffic right now. Checked by
+  infrastructure (a load balancer, an orchestrator), not a human, so it's deliberately
+  unauthenticated.
+- **Metrics** (`/actuator/prometheus`) — how is the system behaving over time. `TransferMetrics`
+  wraps a `MeterRegistry` with exactly the counters/timer `TransferService` needs
+  (`transfers.completed`, `transfers.failed` tagged by exception type, and a
+  `transfers.duration` timer with percentile histograms enabled), rather than scattering
+  `MeterRegistry` calls through the service directly — one place owns the metric names and tag
+  shapes. Prometheus scrapes this endpoint every 5 seconds; Grafana queries Prometheus and
+  renders the dashboard in `observability/grafana/dashboards/`.
+- **Tracing** (every response's `X-Trace-Id` header) — Micrometer Tracing assigns a trace id to
+  each incoming request. `CorrelationIdFilter` reads it back out and sets it as a response
+  header. The same trace id appears in every structured JSON log line produced while handling
+  that request, so the two together let you go from "a user reports trace id X failed" straight
+  to every log line from that one request, instead of grepping timestamps and hoping nothing
+  else was happening concurrently.
+
+See [ADR 0009](decisions/0009-actuator-exposure.md) for why health and the Prometheus scrape
+endpoint are the only two Actuator routes left unauthenticated.
+
 ## What's deliberately not derived from anything stored
 
 There is no `balance` column anywhere in this schema. `AccountService.getBalanceCents` sums
