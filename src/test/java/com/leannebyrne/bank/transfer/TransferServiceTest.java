@@ -19,6 +19,7 @@ import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerService;
 import com.leannebyrne.bank.outbox.OutboxService;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,12 +54,19 @@ class TransferServiceTest {
     @Mock
     private OutboxService outboxService;
 
+    // A real (in-memory) registry rather than a mock -- lets tests assert on
+    // actual counter/timer values instead of just "something was called,"
+    // which is what these metrics are supposed to produce for real.
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    private final TransferMetrics transferMetrics = new TransferMetrics(meterRegistry);
+
     private TransferService transferService;
 
     @BeforeEach
     void setUp() {
         transferService = new TransferService(
-                transferRepository, accountRepository, accountService, ledgerService, outboxService, null);
+                transferRepository, accountRepository, accountService, ledgerService, outboxService,
+                transferMetrics, null);
         // Production wiring does this via a @Lazy Spring proxy; tests have no
         // Spring context, so point self at the instance under test directly.
         transferService.self = transferService;
@@ -101,6 +109,7 @@ class TransferServiceTest {
                     && event.amountCents() == 5_000L
                     && event.sourceCustomerId().equals(ownerId);
         }));
+        assertThat(meterRegistry.get("transfers.completed").counter().count()).isEqualTo(1.0);
     }
 
     @Test
@@ -121,6 +130,8 @@ class TransferServiceTest {
                 Mockito.argThat(t -> t.getStatus() == TransferStatus.FAILED));
         verify(ledgerService, never()).recordTransfer(any(), any(), any(), any(Long.class));
         verify(outboxService, never()).recordEvent(any(), any());
+        assertThat(meterRegistry.get("transfers.failed").tag("reason", "InsufficientFundsException")
+                .counter().count()).isEqualTo(1.0);
     }
 
     @Test
