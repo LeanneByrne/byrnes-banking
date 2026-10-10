@@ -17,8 +17,8 @@ that actually prove the hard invariants hold under contention.
 ## Stack
 
 Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Spring Security (JWT) · Apache Kafka ·
-Micrometer · Prometheus · Grafana · JUnit 5 · Testcontainers · JaCoCo. No Lombok — DTOs are plain
-records, entities are explicit.
+Micrometer · Prometheus · Grafana · JUnit 5 · Testcontainers · JaCoCo · React · TypeScript · Vite.
+No Lombok — DTOs are plain records, entities are explicit.
 
 ## Why this exists
 
@@ -52,6 +52,18 @@ Run the test suite (unit + Testcontainers integration tests, including the concu
 
 ```bash
 ./mvnw verify
+```
+
+### Frontend
+
+A React + TypeScript single-page app lives in [`frontend/`](frontend/) — see its own README for
+details. With the backend already running:
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev            # http://localhost:5173
 ```
 
 ## Demo logins
@@ -110,6 +122,18 @@ curl -s "localhost:8080/api/accounts/00000000-0000-0000-0000-000000000111/transa
 Trying any of these against another customer's account returns `403 Forbidden` — ownership is
 enforced in the service layer, not just by hiding the button in a UI that doesn't exist here.
 
+## Frontend
+
+The React app ([`frontend/`](frontend/)) covers: one-click demo logins, an accounts dashboard
+with real derived balances, paginated per-account transaction history, a transfer form, and an
+admin panel with a ledger-wide balance check and a **stress-test button** — it fires several
+concurrent transfer attempts from the browser between two accounts and then re-checks the ledger,
+making the no-double-spend guarantee `TransferConcurrencyIntegrationTest` already proves in CI
+something a non-technical reviewer can watch happen in real time.
+
+The JWT is held in React state only, never `localStorage`/`sessionStorage` — see
+[ADR 0010](docs/decisions/0010-frontend-token-storage.md).
+
 ## Architecture
 
 See [`docs/architecture.md`](docs/architecture.md) for a diagram and walkthrough of the request
@@ -145,6 +169,7 @@ Short ADRs for the calls that would otherwise get silently re-litigated or rever
 - [0007 — Stateless JWT auth design](docs/decisions/0007-jwt-auth-design.md)
 - [0008 — Transactional outbox with idempotent, at-least-once consumers](docs/decisions/0008-transactional-outbox.md)
 - [0009 — Actuator exposure boundary](docs/decisions/0009-actuator-exposure.md)
+- [0010 — Frontend JWT storage: in-memory only](docs/decisions/0010-frontend-token-storage.md)
 
 ## Known, deliberate limitations
 

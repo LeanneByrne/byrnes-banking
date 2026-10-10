@@ -17,4 +17,16 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, UUID> 
             where e.accountId = :accountId
             """)
     long sumBalanceCentsByAccountId(@Param("accountId") UUID accountId);
+
+    /**
+     * Across every account, not just one -- the double-entry invariant (ADR
+     * 0003) means this must always be exactly zero. A non-zero result here
+     * would mean money was created or destroyed somewhere, which should be
+     * structurally impossible given every write goes through LedgerService.
+     */
+    @Query("""
+            select coalesce(sum(case when e.entryType = 'CREDIT' then e.amountCents else -e.amountCents end), 0)
+            from LedgerEntry e
+            """)
+    long sumNetBalanceCents();
 }

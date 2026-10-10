@@ -50,3 +50,4 @@ app:
   jwt:
     secret: ${JWT_SECRET:change-me-to-a-long-random-value-before-any-real-deployment}
     expiration-minutes: 60
+  frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}

@@ -137,4 +137,18 @@ class SecurityIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", bearer(UUID.randomUUID(), Role.ADMIN)))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void customerRoleCannotReadLedgerBalanceCheck() throws Exception {
+        mockMvc.perform(get("/api/ledger/balance-check")
+                        .header("Authorization", bearer(ALICE_CUSTOMER_ID, Role.CUSTOMER)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminRoleCanReadLedgerBalanceCheck() throws Exception {
+        mockMvc.perform(get("/api/ledger/balance-check")
+                        .header("Authorization", bearer(UUID.randomUUID(), Role.ADMIN)))
+                .andExpect(status().isOk());
+    }
 }

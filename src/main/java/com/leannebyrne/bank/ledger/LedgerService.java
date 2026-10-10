@@ -16,4 +16,8 @@ public class LedgerService {
         ledgerEntryRepository.save(new LedgerEntry(transferId, sourceAccountId, EntryType.DEBIT, amountCents));
         ledgerEntryRepository.save(new LedgerEntry(transferId, destinationAccountId, EntryType.CREDIT, amountCents));
     }
+
+    public long getNetBalanceCents() {
+        return ledgerEntryRepository.sumNetBalanceCents();
+    }
 }
