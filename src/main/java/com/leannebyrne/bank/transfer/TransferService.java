@@ -7,11 +7,13 @@ import com.leannebyrne.bank.account.AccountRepository;
 import com.leannebyrne.bank.account.AccountService;
 import com.leannebyrne.bank.account.AccountStatus;
 import com.leannebyrne.bank.account.AccountType;
+import com.leannebyrne.bank.common.BankingException;
 import com.leannebyrne.bank.common.OwnershipException;
 import com.leannebyrne.bank.customer.Role;
 import com.leannebyrne.bank.ledger.LedgerService;
 import com.leannebyrne.bank.outbox.OutboxService;
 import com.leannebyrne.bank.transfer.dto.TransferRequest;
+import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.context.annotation.Lazy;
@@ -27,6 +29,7 @@ public class TransferService {
     private final AccountService accountService;
     private final LedgerService ledgerService;
     private final OutboxService outboxService;
+    private final TransferMetrics transferMetrics;
 
     /** Package-private (not final) so tests can point it at the instance under test. */
     TransferService self;
@@ -37,12 +40,14 @@ public class TransferService {
             AccountService accountService,
             LedgerService ledgerService,
             OutboxService outboxService,
+            TransferMetrics transferMetrics,
             @Lazy TransferService self) {
         this.transferRepository = transferRepository;
         this.accountRepository = accountRepository;
         this.accountService = accountService;
         this.ledgerService = ledgerService;
         this.outboxService = outboxService;
+        this.transferMetrics = transferMetrics;
         this.self = self;
     }
 
@@ -57,19 +62,31 @@ public class TransferService {
             Role actingRole) {
         var existing = transferRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
+            // A replay returns a previously-computed result without re-running
+            // any business logic, so it is deliberately NOT counted as a new
+            // completed/failed attempt here -- the metrics below only cover
+            // genuinely new transfer attempts.
             return replayOrConflict(existing.get(), request, actingCustomerId, actingRole);
         }
 
+        Timer.Sample sample = transferMetrics.startTimer();
         try {
-            return self.transferWithLocks(request, idempotencyKey, actingCustomerId, actingRole);
+            Transfer result = self.transferWithLocks(request, idempotencyKey, actingCustomerId, actingRole);
+            transferMetrics.recordCompleted(sample);
+            return result;
         } catch (DataIntegrityViolationException raceLoss) {
             // Someone else won the race on this idempotency key between our lookup
             // and our insert. Re-query in a clean transaction and return their
             // result instead of surfacing an error for a request that, from the
-            // client's point of view, actually succeeded.
+            // client's point of view, actually succeeded. Not recorded as
+            // failed, for the same reason a replay isn't: this attempt didn't
+            // actually fail, it just lost a race to an equivalent one.
             Transfer winner = transferRepository.findByIdempotencyKey(idempotencyKey)
                     .orElseThrow(() -> raceLoss);
             return replayOrConflict(winner, request, actingCustomerId, actingRole);
+        } catch (BankingException businessFailure) {
+            transferMetrics.recordFailed(sample, businessFailure);
+            throw businessFailure;
         }
     }
 

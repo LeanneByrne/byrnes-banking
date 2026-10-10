@@ -19,6 +19,33 @@ spring:
     consumer:
       auto-offset-reset: earliest
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # /health stays public (see SecurityConfig) for load-balancer-style
+        # probes; everything else here is operational detail an unauthenticated
+        # caller shouldn't see, so it's locked to ADMIN at the filter-chain level.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        transfers.duration: true
+  tracing:
+    sampling:
+      # 100% sampling is fine at this traffic volume; a real high-throughput
+      # service would sample a fraction to control tracing backend cost.
+      probability: 1.0
+
+logging:
+  structured:
+    format:
+      console: ecs
+
 app:
   jwt:
     secret: ${JWT_SECRET:change-me-to-a-long-random-value-before-any-real-deployment}
