@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { createTransfer, getAllCustomers, getLedgerBalanceCheck, ApiError } from "../api/client";
 import type { CustomerResponse, LedgerBalanceCheckResponse } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -22,18 +22,18 @@ export function AdminPage() {
   const [running, setRunning] = useState(false);
   const [stressResult, setStressResult] = useState<StressTestResult | null>(null);
 
+  const refreshBalanceCheck = useCallback(() => {
+    if (!session) return;
+    getLedgerBalanceCheck(session.token).then(setBalanceCheck).catch(() => undefined);
+  }, [session]);
+
   useEffect(() => {
     if (!session) return;
     getAllCustomers(session.token)
       .then(setCustomers)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load customers"));
     refreshBalanceCheck();
-  }, [session]);
-
-  function refreshBalanceCheck() {
-    if (!session) return;
-    getLedgerBalanceCheck(session.token).then(setBalanceCheck).catch(() => undefined);
-  }
+  }, [session, refreshBalanceCheck]);
 
   /**
    * Fires `count` concurrent transfer attempts -- the same no-double-spend
