@@ -154,6 +154,29 @@ Three separate mechanisms answer three separate questions:
 See [ADR 0009](decisions/0009-actuator-exposure.md) for why health and the Prometheus scrape
 endpoint are the only two Actuator routes left unauthenticated.
 
+## Deployment topology (AWS)
+
+```mermaid
+flowchart LR
+    User((Browser)) -->|HTTPS| CF[CloudFront]
+    CF -->|HTTPS, S3 origin| S3[S3: frontend static files]
+    User -->|HTTP| ALB[Application Load Balancer]
+    ALB --> ECS[ECS Fargate task<br/>profile=cloud, no Kafka]
+    ECS --> RDS[(RDS Postgres<br/>private subnet)]
+    ECS -.->|pulls image| ECR[ECR]
+    GH[GitHub Actions<br/>deploy.yml] -.->|OIDC, no stored keys| ECR
+    GH -.->|OIDC| ECS
+    GH -.->|OIDC| S3
+```
+
+The ECS task runs in a *public* subnet (not the private one RDS lives in) specifically to avoid
+paying for a NAT Gateway it would otherwise need purely to pull its own image — see
+[ADR 0012](decisions/0012-cost-conscious-cloud-infra.md). The task has no Kafka to talk to at
+all; `OutboxRelay` and both consumers are excluded under the `cloud` Spring profile (see
+[ADR 0011](decisions/0011-kafka-excluded-from-cloud.md)), so `TransferService`'s unconditional
+outbox write just accumulates rows nobody is reading in this specific environment. GitHub
+Actions never holds a stored AWS credential — see [ADR 0013](decisions/0013-oidc-over-stored-aws-keys.md).
+
 ## What's deliberately not derived from anything stored
 
 There is no `balance` column anywhere in this schema. `AccountService.getBalanceCents` sums

@@ -4,6 +4,7 @@ import com.leannebyrne.bank.outbox.KafkaTopics;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Header;
@@ -16,8 +17,11 @@ import org.springframework.stereotype.Component;
  * conflict, not a duplicate row. This matters here specifically because the
  * outbox relay only guarantees at-least-once delivery -- seeing the same
  * event twice is an expected, normal occurrence, not a bug to chase.
+ *
+ * Disabled under the "cloud" profile, same as OutboxRelay -- see ADR 0011.
  */
 @Component
+@Profile("!cloud")
 public class AuditLogConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(AuditLogConsumer.class);

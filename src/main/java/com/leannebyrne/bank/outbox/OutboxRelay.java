@@ -6,12 +6,19 @@ import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
+ * Disabled under the "cloud" profile -- see ADR 0011. TransferService still
+ * writes outbox_events rows unconditionally in every environment (a single
+ * code path for the thing that actually matters, money movement); in the
+ * cloud deployment those rows simply accumulate unpublished, which is inert
+ * and documented, not a silent gap.
+ *
  * Polls for outbox rows nobody has published yet and sends each one to
  * Kafka, stamping publishedAt only after the send is acknowledged. eventId
  * and eventType travel as record headers, not inside the JSON value, so the
@@ -27,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
  * specifically because of this guarantee, not despite it.
  */
 @Component
+@Profile("!cloud")
 public class OutboxRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);

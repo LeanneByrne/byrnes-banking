@@ -2,7 +2,7 @@ spring:
   application:
     name: byrnes-banking
   datasource:
-    url: jdbc:postgresql://localhost:5432/byrnes_banking
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/byrnes_banking}
     username: ${DB_USERNAME:byrnes}
     password: ${DB_PASSWORD:byrnes}
   flyway:

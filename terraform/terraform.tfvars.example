@@ -1,0 +1,11 @@
+aws_region        = "us-east-1"
+github_repository = "LeanneByrne/byrnes-banking"
+alert_email       = "you@example.com"
+budget_limit_usd  = 20
+
+# Real, randomly-generated values here, not the local dev placeholders.
+db_username    = "byrnes"
+db_password    = "change-me-to-a-real-random-password"
+jwt_secret     = "change-me-to-a-long-random-value"
+admin_email    = "admin@byrnesbanking.dev"
+admin_password = "change-me-to-a-real-random-password"
