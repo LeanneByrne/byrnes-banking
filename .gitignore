@@ -38,3 +38,12 @@ build/
 ### Private notes (teaching mode, roadmap, learning docs) ###
 notes/
 CLAUDE.local.md
+
+### Terraform (terraform/.gitignore covers state and terraform.tfvars; this catches other var files) ###
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+!terraform.tfvars.example
