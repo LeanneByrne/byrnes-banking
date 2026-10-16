@@ -14,6 +14,8 @@ that actually prove the hard invariants hold under contention.
 > financial institution. Seed data uses fake people and fake balances purely so the API has
 > something realistic to operate on.
 
+![Demo: login, transfers, and the concurrent stress test](docs/demo.gif)
+
 ## Stack
 
 Java 21 · Spring Boot 4 · Maven · PostgreSQL · Flyway · Spring Security (JWT) · Apache Kafka ·
